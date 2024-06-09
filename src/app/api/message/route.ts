@@ -1,12 +1,13 @@
 import { db } from '@/db';
 import { openai } from '@/lib/openai';
-import { pinecone } from '@/lib/pinecone';
+// import { pinecone } from '@/lib/pinecone';
 import { SendMessageValidator } from '@/lib/validators/SendMessageValidator';
 import { getKindeServerSession } from '@kinde-oss/kinde-auth-nextjs/server';
 import { OpenAIEmbeddings } from 'langchain/embeddings/openai';
 import { PineconeStore } from 'langchain/vectorstores/pinecone';
 import { NextRequest } from 'next/server';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { getPineconeClient } from '@/lib/pinecone';
 
 export const POST = async (req: NextRequest) => {
   // endpoint for asking a question to a pdf file
@@ -49,11 +50,16 @@ export const POST = async (req: NextRequest) => {
   const embeddings = new OpenAIEmbeddings({
     openAIApiKey: process.env.OPENAI_API_KEY,
   });
+  const pinecone = await getPineconeClient();
+  console.log('Pinecone client initialized 2 from route :', pinecone);
 
-  const pineconeIndex = pinecone.Index('quill');
+  const pineconeIndex = pinecone.Index('pdf');
+  console.log('Pinecone index accessed from route:', pineconeIndex);
 
   const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+    //@ts-ignore
     pineconeIndex,
+    namespace: file.id
   });
 
   const results = await vectorStore.similaritySearch(message, 4);
@@ -91,9 +97,9 @@ export const POST = async (req: NextRequest) => {
   
   PREVIOUS CONVERSATION:
   ${formattedPrevMessages.map(message => {
-    if (message.role === 'user') return `User: ${message.content}\n`;
-    return `Assistant: ${message.content}\n`;
-  })}
+          if (message.role === 'user') return `User: ${message.content}\n`;
+          return `Assistant: ${message.content}\n`;
+        })}
   
   \n----------------\n
   

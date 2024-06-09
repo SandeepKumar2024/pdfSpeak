@@ -6,7 +6,7 @@ import { UploadDropzone } from './UploadDropzone';
 import { Dialog, DialogContent, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 
-export const UploadButton = ({ isSubscribed }: { isSubscribed: boolean }) => {
+export const UploadButton = () => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -22,7 +22,7 @@ export const UploadButton = ({ isSubscribed }: { isSubscribed: boolean }) => {
         <Button>Upload PDF</Button>
       </DialogTrigger>
       <DialogContent>
-        <UploadDropzone isSubscribed={isSubscribed} />
+        <UploadDropzone  />
       </DialogContent>
     </Dialog>
   );

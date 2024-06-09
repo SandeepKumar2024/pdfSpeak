@@ -8,15 +8,13 @@ import { Cloud, File, Loader2 } from 'lucide-react';
 import { Progress } from './ui/progress';
 import { useToast } from './ui/use-toast';
 
-export const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
+export const UploadDropzone = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const router = useRouter();
-
   const { toast } = useToast();
-
-  const { startUpload } = useUploadThing(isSubscribed ? 'proPlanUploader' : 'freePlanUploader');
+  const { startUpload } = useUploadThing('freePlanUploader');
 
   const { mutate: startPolling } = trpc.getFile.useMutation({
     onSuccess: file => {
@@ -48,13 +46,14 @@ export const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
       multiple={false}
       onDrop={async acceptedFile => {
         setIsUploading(true);
-
         const progressInterval = startSimulatedProgress();
 
-        // handle file uploading
+        // Handle file uploading
         const res = await startUpload(acceptedFile);
 
         if (!res) {
+          clearInterval(progressInterval);
+          setIsUploading(false);
           return toast({
             title: 'Something went wrong!',
             description: 'Please try again later',
@@ -63,10 +62,11 @@ export const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
         }
 
         const [fileResponse] = res;
-
         const key = fileResponse?.key;
 
         if (!key) {
+          clearInterval(progressInterval);
+          setIsUploading(false);
           return toast({
             title: 'Something went wrong!',
             description: 'Please try again later',
@@ -92,7 +92,7 @@ export const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
                 <p className="mb-2 text-sm text-zinc-700">
                   <span className="font-semibold">Click to upload</span> or drag and drop
                 </p>
-                <p className="text-xs text-zinc-500">PDF (up to {isSubscribed ? '16' : '4'} MB)</p>
+                <p className="text-xs text-zinc-500">PDF (up to 16 MB)</p>
               </div>
 
               {acceptedFiles && acceptedFiles[0] ? (

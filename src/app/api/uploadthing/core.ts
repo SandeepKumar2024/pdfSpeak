@@ -1,12 +1,14 @@
 import { db } from '@/db';
 import { getKindeServerSession } from '@kinde-oss/kinde-auth-nextjs/server';
-import { createUploadthing, type FileRouter } from 'uploadthing/next';
+import {
+  createUploadthing,
+  type FileRouter,
+} from 'uploadthing/next'
 import { PDFLoader } from 'langchain/document_loaders/fs/pdf';
 import { OpenAIEmbeddings } from 'langchain/embeddings/openai';
 import { PineconeStore } from 'langchain/vectorstores/pinecone';
-import { pinecone } from '@/lib/pinecone';
-import { getUserSubscriptionPlan } from '@/lib/stripe';
-import { PLANS } from '@/config/stripe';
+import { getPineconeClient } from '@/lib/pinecone';
+
 
 const f = createUploadthing();
 
@@ -15,12 +17,10 @@ const middleware = async () => {
   const user = getUser();
 
   if (!user || !user.id) {
-    throw new Error('Unauthorize');
+    throw new Error('Unauthorized');
   }
 
-  const subscriptionPlan = await getUserSubscriptionPlan();
-
-  return { subscriptionPlan, userId: user.id };
+  return { userId: user.id };
 };
 
 const onUploadComplete = async ({
@@ -41,6 +41,7 @@ const onUploadComplete = async ({
   });
 
   if (isFileExist) {
+    console.log('File already exists in the database:', file.key);
     return;
   }
 
@@ -49,47 +50,37 @@ const onUploadComplete = async ({
       key: file.key,
       name: file.name,
       userId: metadata.userId,
-      url: `https://uploadthing-prod.s3.us-west-2.amazonaws.com/${file.key}`,
+      url: `https://utfs.io/f/${file.key}`,
       uploadStatus: 'PROCESSING',
     },
   });
 
   try {
-    const response = await fetch(`https://uploadthing-prod.s3.us-west-2.amazonaws.com/${file.key}`);
+    console.log('Fetching file from S3:', file.key);
+    const response = await fetch(`https://utfs.io/f/${file.key}`);
     const blob = await response.blob();
 
+    console.log('Loading PDF with PDFLoader');
     const loader = new PDFLoader(blob);
-
     const pageLevelDocs = await loader.load();
 
-    const pagesAmt = pageLevelDocs.length;
+    console.log('Number of pages in PDF:', pageLevelDocs.length);
 
-    const { subscriptionPlan } = metadata;
-    const { isSubscribed } = subscriptionPlan;
+    // Vectorize and index the entire document
+    console.log('Vectorizing and indexing document');
 
-    const isProExceeded = pagesAmt > PLANS.find(plan => plan.name === 'Pro')!.pagesPerPdf;
-    const isFreeExceeded = pagesAmt > PLANS.find(plan => plan.name === 'Free')!.pagesPerPdf;
-
-    if ((isSubscribed && isProExceeded) || (!isSubscribed && isFreeExceeded)) {
-      await db.file.update({
-        data: {
-          uploadStatus: 'FAILED',
-        },
-        where: {
-          id: createdFile.id,
-        },
-      });
-    }
-
-    // vectorize and index entire document
-    const pineconeIndex = pinecone.Index('quill');
-
+    const pinecone = await getPineconeClient()
+    console.log("pincone ",pinecone)
+    const pineconeIndex = pinecone.Index('pdf')
+    console.log('Pinecone index accessed:', pineconeIndex);
     const embeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY,
     });
 
     await PineconeStore.fromDocuments(pageLevelDocs, embeddings, {
+      
       pineconeIndex,
+      namespace:createdFile.id
     });
 
     await db.file.update({
@@ -100,7 +91,9 @@ const onUploadComplete = async ({
         id: createdFile.id,
       },
     });
+    console.log('Upload status:', db.file);
   } catch (error) {
+    console.error('Error processing upload:', error);
     await db.file.update({
       data: {
         uploadStatus: 'FAILED',
@@ -112,13 +105,15 @@ const onUploadComplete = async ({
   }
 };
 
+// Define OurFileRouter object
 export const ourFileRouter = {
-  freePlanUploader: f({ pdf: { maxFileSize: '4MB' } })
+  freePlanUploader: f({ pdf: { maxFileSize: '16MB' } })
     .middleware(middleware)
     .onUploadComplete(onUploadComplete),
-  proPlanUploader: f({ pdf: { maxFileSize: '16MB' } })
-    .middleware(middleware)
-    .onUploadComplete(onUploadComplete),
+
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;
+
+
+

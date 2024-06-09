@@ -57,7 +57,7 @@ export const POST = async (req: NextRequest) => {
   console.log('Pinecone index accessed from route:', pineconeIndex);
 
   const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
-    //@ts-ignore
+    
     pineconeIndex,
     namespace: file.id
   });
